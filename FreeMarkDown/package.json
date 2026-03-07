@@ -1,0 +1,53 @@
+{
+  "name": "freemarkdown",
+  "version": "0.1.1",
+  "description": "A focused Markdown editor inspired by the Typora workflow.",
+  "main": "main.js",
+  "author": "Codex",
+  "license": "MIT",
+  "productName": "FreeMarkDown",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check app.js && node --check main.js && node --check preload.js",
+    "build:portable": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^36.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.codex.freemarkdown",
+    "productName": "FreeMarkDown",
+    "copyright": "Copyright © 2026 FreeMarkDown",
+    "artifactName": "${productName}-${version}-Portable.${ext}",
+    "electronDist": "node_modules/electron/dist",
+    "files": [
+      "app.js",
+      "index.html",
+      "main.js",
+      "preload.js",
+      "styles.css",
+      "README.md",
+      "package.json",
+      "assets/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable.${ext}"
+    }
+  }
+}

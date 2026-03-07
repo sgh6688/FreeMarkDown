@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FreeMarkDown</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div class="header-stack">
+      <header class="topbar">
+        <div class="topbar-main">
+          <div class="brand">
+            <div class="brand-mark">FM</div>
+            <div>
+              <h1>FreeMarkDown</h1>
+              <p>更自由的 Markdown 写作工具</p>
+            </div>
+          </div>
+          <div class="document-head">
+            <input id="documentTitle" class="document-title" value="未命名文档" aria-label="文档标题">
+            <div class="document-subhead">
+              <p class="drop-hint">支持表格、任务列表、图片拖拽与快捷输入</p>
+            </div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button type="button" data-action="new">新建</button>
+          <button type="button" data-action="import">打开</button>
+          <button type="button" data-action="save">保存</button>
+          <button type="button" data-action="export">另存为</button>
+          <button type="button" data-action="toggle-mode">源码模式</button>
+          <button type="button" id="tipsToggleButton">折叠提示</button>
+        </div>
+      </header>
+
+      <section class="toolbar panel" id="toolbar">
+        <section class="toolbar-group" data-toolbar-group>
+          <button type="button" class="toolbar-group-toggle" data-toolbar-toggle aria-expanded="true">
+            <span class="toolbar-label">标题</span>
+            <span class="toolbar-caret">−</span>
+          </button>
+          <div class="toolbar-group-body">
+            <button type="button" data-format="heading" data-level="1">H1</button>
+            <button type="button" data-format="heading" data-level="2">H2</button>
+            <button type="button" data-format="heading" data-level="3">H3</button>
+          </div>
+        </section>
+        <section class="toolbar-group" data-toolbar-group>
+          <button type="button" class="toolbar-group-toggle" data-toolbar-toggle aria-expanded="true">
+            <span class="toolbar-label">文本</span>
+            <span class="toolbar-caret">−</span>
+          </button>
+          <div class="toolbar-group-body">
+            <button type="button" data-format="bold">粗体</button>
+            <button type="button" data-format="italic">斜体</button>
+            <button type="button" data-format="link">链接</button>
+          </div>
+        </section>
+        <section class="toolbar-group" data-toolbar-group>
+          <button type="button" class="toolbar-group-toggle" data-toolbar-toggle aria-expanded="true">
+            <span class="toolbar-label">结构</span>
+            <span class="toolbar-caret">−</span>
+          </button>
+          <div class="toolbar-group-body">
+            <button type="button" data-format="quote">引用</button>
+            <button type="button" data-format="ul">无序列表</button>
+            <button type="button" data-format="task">任务列表</button>
+            <button type="button" data-format="ol">有序列表</button>
+            <button type="button" data-format="code">代码块</button>
+            <button type="button" data-format="hr">分割线</button>
+          </div>
+        </section>
+      </section>
+    </div>
+
+    <main class="workspace">
+      <section class="left-rail">
+        <section class="panel">
+          <h2>文档概览</h2>
+          <dl class="stats">
+            <div>
+              <dt>字数</dt>
+              <dd id="wordCount">0</dd>
+            </div>
+            <div>
+              <dt>行数</dt>
+              <dd id="lineCount">0</dd>
+            </div>
+            <div>
+              <dt>图片</dt>
+              <dd id="imageCount">0</dd>
+            </div>
+            <div>
+              <dt>状态</dt>
+              <dd id="saveState">未保存</dd>
+            </div>
+          </dl>
+        </section>
+      </section>
+
+      <section class="editor-stage">
+        <div class="editor-frame" id="editorFrame">
+          <div id="dropOverlay" class="drop-overlay" aria-hidden="true">
+            <strong>松开以插入图片</strong>
+            <span>将以 Base64 内嵌到 Markdown 中</span>
+          </div>
+          <div id="editor" class="editor" contenteditable="true" spellcheck="false" aria-label="Markdown editor"></div>
+          <textarea id="sourceEditor" class="source-editor" spellcheck="false" aria-label="Markdown source"></textarea>
+        </div>
+      </section>
+
+      <aside class="outline-rail">
+        <section class="outline-panel panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">导航</p>
+              <h2>文档大纲</h2>
+            </div>
+            <span id="outlineCount" class="badge">0</span>
+          </div>
+          <nav id="outline" class="outline" aria-label="文章大纲">
+            <p class="outline-empty">文档里还没有标题</p>
+          </nav>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <aside id="tipsPanel" class="tips-float" aria-live="polite">
+    <div class="tips-header">
+      <div>
+        <p class="eyebrow">快捷提示</p>
+        <h2>写作辅助</h2>
+      </div>
+      <button type="button" id="tipsCollapseButton">收起</button>
+    </div>
+    <div id="tipsBody" class="tips-body">
+      <p><kbd># 空格</kbd> 转一级标题</p>
+      <p><kbd>- 空格</kbd> 转列表</p>
+      <p><kbd>[] 空格</kbd> 转任务列表</p>
+      <p><kbd>Ctrl/Cmd + K</kbd> 插入链接</p>
+      <p><kbd>拖拽 / 粘贴图片</kbd> 自动插入文档</p>
+    </div>
+  </aside>
+
+  <input id="filePicker" type="file" accept=".md,.markdown,text/markdown,text/plain" hidden>
+
+  <template id="emptyDocumentTemplate">
+<h1>开始写作</h1>
+<p>这是一个接近 Typora 工作流的浏览器端 Markdown 编辑器，现在名为 FreeMarkDown。</p>
+<blockquote>
+<p>直接在正文里写，顶部工具条负责格式，大纲固定显示在右侧。</p>
+</blockquote>
+<h2>当前能力</h2>
+<ul>
+<li>支持标题、列表、引用、分割线</li>
+<li>支持代码块、链接、图片、表格和任务列表</li>
+<li>支持导入导出 Markdown 与浏览器本地自动保存</li>
+</ul>
+<table>
+<thead>
+<tr><th>功能</th><th>状态</th></tr>
+</thead>
+<tbody>
+<tr><td>WYSIWYG</td><td>已启用</td></tr>
+<tr><td>大纲导航</td><td>已强化</td></tr>
+</tbody>
+</table>
+  </template>
+
+  <script src="./app.js"></script>
+</body>
+</html>
