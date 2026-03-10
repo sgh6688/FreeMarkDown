@@ -23,6 +23,9 @@ const dropOverlay = document.getElementById("dropOverlay");
 const tipsPanel = document.getElementById("tipsPanel");
 const tipsToggleButton = document.getElementById("tipsToggleButton");
 const tipsCollapseButton = document.getElementById("tipsCollapseButton");
+const exportMenuButton = document.getElementById("exportMenuButton");
+const exportMenu = document.getElementById("exportMenu");
+const exportMenuItems = document.querySelectorAll("[data-export-kind]");
 const toolbarGroups = document.querySelectorAll("[data-toolbar-group]");
 const tableActionButtons = document.querySelectorAll("[data-table-action]");
 
@@ -34,6 +37,7 @@ let currentFilePath = null;
 let currentFileHandle = null;
 let isDocumentDirty = false;
 let lastActiveTableCell = null;
+let exportMenuOpen = false;
 
 function escapeHtml(value) {
   return value
@@ -401,6 +405,62 @@ function getRenamedFilePath(title) {
   return currentFilePath.replace(new RegExp(`${fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), `${safeTitle}${extension}`);
 }
 
+function buildExportHtmlDocument(title, contentHtml, options = {}) {
+  const pageTitle = escapeHtml(title || "FreeMarkDown");
+  const htmlTag = options.wordCompatible
+    ? '<html lang="zh-CN" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'
+    : '<html lang="zh-CN">';
+
+  return [
+    "<!DOCTYPE html>",
+    htmlTag,
+    "<head>",
+    '<meta charset="UTF-8">',
+    `<title>${pageTitle}</title>`,
+    options.wordCompatible ? "<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->" : "",
+    "<style>",
+    "@page { size: A4; margin: 18mm 16mm 20mm; }",
+    "body { margin: 0; color: #1f2328; background: #ffffff; font-family: 'Segoe UI', 'PingFang SC', sans-serif; }",
+    ".document { max-width: 820px; margin: 0 auto; padding: 0; line-height: 1.72; font-size: 14px; }",
+    "h1, h2, h3 { margin: 1.4em 0 0.6em; line-height: 1.28; color: #111827; }",
+    "h1 { font-size: 2em; border-bottom: 1px solid #d8dee4; padding-bottom: 0.3em; }",
+    "h2 { font-size: 1.5em; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.25em; }",
+    "h3 { font-size: 1.2em; }",
+    "p, blockquote, pre, ul, ol, table, figure, hr { margin: 1em 0; }",
+    "ul, ol { padding-left: 1.8em; }",
+    "blockquote { padding-left: 1em; color: #4b5563; border-left: 4px solid #d1d5db; }",
+    "pre { padding: 12px 14px; background: #f6f8fa; border: 1px solid #d8dee4; border-radius: 8px; overflow: hidden; white-space: pre-wrap; word-break: break-word; }",
+    "code { padding: 0.12em 0.35em; background: rgba(175, 184, 193, 0.24); border-radius: 4px; font-family: Consolas, 'SFMono-Regular', monospace; }",
+    "pre code { padding: 0; background: transparent; }",
+    "table { width: 100%; border-collapse: collapse; table-layout: fixed; }",
+    "th, td { border: 1px solid #d0d7de; padding: 7px 10px; text-align: left; vertical-align: top; }",
+    "th { background: #f6f8fa; }",
+    "img { max-width: 100%; height: auto; border-radius: 8px; }",
+    "figure { display: block; }",
+    "figcaption { color: #6b7280; font-size: 12px; margin-top: 6px; }",
+    "a { color: #0969da; text-decoration: none; }",
+    "hr { border: 0; border-top: 1px solid #d8dee4; }",
+    "</style>",
+    "</head>",
+    "<body>",
+    `<main class="document">${contentHtml}</main>`,
+    "</body>",
+    "</html>"
+  ].filter(Boolean).join("");
+}
+
+function getExportPayload() {
+  const markdown = getMarkdown();
+  const title = documentTitle.value.trim() || "untitled";
+  const contentHtml = markdownToHtml(markdown);
+  return {
+    title: sanitizeFileName(title),
+    currentFilePath,
+    markdown,
+    documentHtml: buildExportHtmlDocument(title, contentHtml)
+  };
+}
+
 function getFileMetaLabel() {
   if (currentFilePath) {
     return currentFilePath;
@@ -427,6 +487,16 @@ function refreshWindowTitle() {
   } else {
     document.title = getWindowTitle();
   }
+}
+
+function setExportMenuOpen(open) {
+  exportMenuOpen = open;
+  exportMenu.hidden = !open;
+  exportMenuButton.setAttribute("aria-expanded", String(open));
+}
+
+function toggleExportMenu(forceOpen = !exportMenuOpen) {
+  setExportMenuOpen(forceOpen);
 }
 
 function readTipsState() {
@@ -1501,6 +1571,46 @@ async function saveMarkdownFile(forceSaveAs = false) {
   saveState.textContent = forceSaveAs ? "已另存为" : "已导出";
 }
 
+async function exportDocument(kind) {
+  setExportMenuOpen(false);
+  const payload = getExportPayload();
+
+  if (desktopAPI) {
+    try {
+      const result = kind === "pdf"
+        ? await desktopAPI.exportPdf(payload)
+        : await desktopAPI.exportWord(payload);
+      if (!result) {
+        return;
+      }
+
+      saveState.textContent = kind === "pdf" ? "已导出 PDF" : "已导出 Word";
+      return;
+    } catch (error) {
+      console.error(error);
+      saveState.textContent = kind === "pdf" ? "PDF 导出失败" : "Word 导出失败";
+      return;
+    }
+  }
+
+  if (kind === "pdf") {
+    const printWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!printWindow) {
+      saveState.textContent = "PDF 导出失败";
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(payload.documentHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    saveState.textContent = "请在打印窗口中另存为 PDF";
+    return;
+  }
+
+  saveState.textContent = "浏览器模式暂不支持本地生成 .docx，请使用桌面版导出 Word。";
+}
+
 function resetDocument() {
   currentFilePath = null;
   currentFileHandle = null;
@@ -1527,8 +1637,12 @@ async function handleAction(action) {
     await saveMarkdownFile(false);
     return;
   }
-  if (action === "export") {
+  if (action === "export-markdown") {
     await saveMarkdownFile(true);
+    return;
+  }
+  if (action === "export-menu") {
+    toggleExportMenu();
     return;
   }
   if (action === "toggle-mode") {
@@ -1537,8 +1651,29 @@ async function handleAction(action) {
 }
 
 document.querySelectorAll("[data-action]").forEach((button) => {
+  button.addEventListener("mousedown", (event) => {
+    if (button === exportMenuButton) {
+      return;
+    }
+    event.preventDefault();
+  });
   button.addEventListener("click", async () => {
     await handleAction(button.dataset.action);
+  });
+});
+
+exportMenuItems.forEach((button) => {
+  button.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  button.addEventListener("click", async () => {
+    const kind = button.dataset.exportKind;
+    setExportMenuOpen(false);
+    if (kind === "markdown") {
+      await handleAction("export-markdown");
+      return;
+    }
+    await exportDocument(kind);
   });
 });
 
@@ -1674,7 +1809,22 @@ async function onKeyboardShortcut(event) {
 }
 
 window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && exportMenuOpen) {
+    setExportMenuOpen(false);
+    return;
+  }
   void onKeyboardShortcut(event);
+});
+
+document.addEventListener("click", (event) => {
+  if (!exportMenuOpen) {
+    return;
+  }
+  const target = event.target;
+  if (target instanceof Node && (exportMenu.contains(target) || exportMenuButton.contains(target))) {
+    return;
+  }
+  setExportMenuOpen(false);
 });
 
 sourceEditor.addEventListener("keydown", (event) => {
@@ -1758,8 +1908,16 @@ filePicker.addEventListener("change", async (event) => {
 
 if (desktopAPI) {
   desktopAPI.onMenuAction(async (action) => {
-    if (action === "save-as") {
+    if (action === "export-markdown") {
       await saveMarkdownFile(true);
+      return;
+    }
+    if (action === "export-pdf") {
+      await exportDocument("pdf");
+      return;
+    }
+    if (action === "export-word") {
+      await exportDocument("word");
       return;
     }
     await handleAction(action === "open" ? "import" : action);

@@ -29,7 +29,14 @@
           <button type="button" data-action="new">新建</button>
           <button type="button" data-action="import">打开</button>
           <button type="button" data-action="save">保存</button>
-          <button type="button" data-action="export">另存为</button>
+          <div class="menu-stack">
+            <button type="button" id="exportMenuButton" data-action="export-menu" aria-haspopup="true" aria-expanded="false">导出</button>
+            <div id="exportMenu" class="action-menu" hidden>
+              <button type="button" data-export-kind="markdown">Markdown</button>
+              <button type="button" data-export-kind="pdf">PDF</button>
+              <button type="button" data-export-kind="word">Word (.docx)</button>
+            </div>
+          </div>
           <button type="button" data-action="toggle-mode">源码模式</button>
           <button type="button" id="tipsToggleButton">折叠提示</button>
         </div>
@@ -167,6 +174,7 @@
       <p><kbd>Backspace</kbd> 可退出空列表项</p>
       <p><kbd>Tab</kbd> 在源码模式里缩进</p>
       <p><kbd>工具栏表格</kbd> 可插入并增删行列</p>
+      <p><kbd>导出</kbd> 菜单可选 Markdown / PDF / Word</p>
       <p><kbd>拖拽 / 粘贴图片</kbd> 自动插入文档</p>
     </div>
   </aside>

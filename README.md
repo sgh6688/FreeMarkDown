@@ -33,6 +33,8 @@ FreeMarkDown 是一个面向 Windows 的 Markdown 编辑器，基于 Electron，
 - 任务列表勾选
 - 图片拖拽和粘贴
 - 列表续写、源码模式缩进
+- 导出 PDF（保留原生文档大纲）
+- 导出 Word 文档（`.docx`，保留 Heading 大纲）
 
 ## 开发环境要求
 

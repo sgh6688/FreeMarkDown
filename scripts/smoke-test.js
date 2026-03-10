@@ -20,6 +20,8 @@ async function main() {
   const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), "freemarkdown-save-"));
   const originalFilePath = path.join(fixtureDir, "rename-me.md");
   const renamedFilePath = path.join(fixtureDir, "renamed-file.md");
+  const exportedPdfPath = path.join(fixtureDir, "exported.pdf");
+  const exportedWordPath = path.join(fixtureDir, "exported.docx");
   await fs.writeFile(originalFilePath, "# Rename Fixture\n", "utf8");
   const app = await electron.launch({
     args: [projectRoot, `--user-data-dir=${userDataDir}`],
@@ -141,6 +143,32 @@ async function main() {
     const renamedFileContent = await fs.readFile(renamedFilePath, "utf8");
     assert.equal(renamedFileContent, "# Rename Fixture");
     await assert.rejects(fs.access(originalFilePath));
+
+    await window.locator("#exportMenuButton").click();
+    await window.waitForFunction(() => !document.getElementById("exportMenu")?.hidden);
+    await window.waitForFunction(() => document.querySelectorAll("[data-export-kind]").length === 3);
+    await window.keyboard.press("Escape");
+    await window.waitForFunction(() => document.getElementById("exportMenu")?.hidden === true);
+
+    const exportResult = await window.evaluate(async ({ pdfPath, wordPath }) => {
+      const payload = window.getExportPayload();
+      const pdf = await window.electronAPI.exportPdf({ ...payload, filePath: pdfPath });
+      const word = await window.electronAPI.exportWord({ ...payload, filePath: wordPath });
+      return { pdf, word };
+    }, { pdfPath: exportedPdfPath, wordPath: exportedWordPath });
+
+    assert.equal(exportResult.pdf.filePath, exportedPdfPath);
+    assert.equal(exportResult.word.filePath, exportedWordPath);
+
+    const pdfStat = await fs.stat(exportedPdfPath);
+    assert.ok(pdfStat.size > 1000);
+    const pdfBuffer = await fs.readFile(exportedPdfPath);
+    const pdfText = pdfBuffer.toString("latin1");
+    assert.match(pdfText, /\/Outlines/);
+
+    const wordBuffer = await fs.readFile(exportedWordPath);
+    assert.equal(wordBuffer[0], 0x50);
+    assert.equal(wordBuffer[1], 0x4b);
 
     const stats = {
       mode: (await window.locator("#modeState").textContent()).trim(),

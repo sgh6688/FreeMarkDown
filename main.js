@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const HTMLtoDOCX = require("html-to-docx");
 const pkg = require("./package.json");
 
 let mainWindow;
@@ -16,6 +17,111 @@ async function pathExists(targetPath) {
     }
     throw error;
   }
+}
+
+function sanitizeFileName(name) {
+  const normalized = String(name || "").replace(/[\\/:*?"<>|]/g, "-").trim();
+  return normalized || "untitled";
+}
+
+function getDefaultExportPath(filePath, title, extension) {
+  const safeTitle = sanitizeFileName(title);
+  if (filePath) {
+    return filePath.replace(/\.[^.]+$/, extension);
+  }
+  return path.join(app.getPath("documents"), `${safeTitle}${extension}`);
+}
+
+async function resolveExportPath(options) {
+  if (options.filePath) {
+    return options.filePath;
+  }
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: options.defaultPath,
+    filters: options.filters
+  });
+
+  if (result.canceled || !result.filePath) {
+    return null;
+  }
+
+  return result.filePath;
+}
+
+async function exportPdf(payload) {
+  const targetPath = await resolveExportPath({
+    filePath: payload.filePath,
+    defaultPath: getDefaultExportPath(payload.currentFilePath, payload.title, ".pdf"),
+    filters: [{ name: "PDF", extensions: ["pdf"] }]
+  });
+  if (!targetPath) {
+    return null;
+  }
+
+  const exportWindow = new BrowserWindow({
+    show: false,
+    autoHideMenuBar: true,
+    webPreferences: {
+      sandbox: true,
+      javascript: false
+    }
+  });
+
+  try {
+    await exportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(payload.documentHtml)}`);
+    const pdfBuffer = await exportWindow.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+      generateTaggedPDF: true,
+      generateDocumentOutline: true,
+      margins: {
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: 0
+      }
+    });
+    await fs.writeFile(targetPath, pdfBuffer);
+    return { filePath: targetPath };
+  } finally {
+    if (!exportWindow.isDestroyed()) {
+      exportWindow.destroy();
+    }
+  }
+}
+
+async function exportWord(payload) {
+  const targetPath = await resolveExportPath({
+    filePath: payload.filePath,
+    defaultPath: getDefaultExportPath(payload.currentFilePath, payload.title, ".docx"),
+    filters: [{ name: "Word Document", extensions: ["docx"] }]
+  });
+  if (!targetPath) {
+    return null;
+  }
+
+  const docxBuffer = await HTMLtoDOCX(payload.documentHtml, null, {
+    title: payload.title,
+    creator: pkg.productName,
+    font: "Segoe UI",
+    fontSize: 22,
+    margins: {
+      top: 1080,
+      right: 960,
+      bottom: 1080,
+      left: 960
+    },
+    table: {
+      row: {
+        cantSplit: true
+      }
+    },
+    decodeUnicode: true,
+    lang: "zh-CN"
+  });
+  await fs.writeFile(targetPath, docxBuffer);
+  return { filePath: targetPath };
 }
 
 async function createWindow() {
@@ -65,7 +171,15 @@ function buildMenu() {
         { label: "打开", accelerator: "CmdOrCtrl+O", click: () => sendMenuAction("open") },
         { type: "separator" },
         { label: "保存", accelerator: "CmdOrCtrl+S", click: () => sendMenuAction("save") },
-        { label: "另存为", accelerator: "CmdOrCtrl+Shift+S", click: () => sendMenuAction("save-as") },
+        { type: "separator" },
+        {
+          label: "导出",
+          submenu: [
+            { label: "Markdown", accelerator: "CmdOrCtrl+Shift+S", click: () => sendMenuAction("export-markdown") },
+            { label: "PDF", accelerator: "CmdOrCtrl+Alt+P", click: () => sendMenuAction("export-pdf") },
+            { label: "Word (.docx)", click: () => sendMenuAction("export-word") }
+          ]
+        },
         { type: "separator" },
         { role: "quit", label: "退出" }
       ]
@@ -159,6 +273,9 @@ ipcMain.handle("file:save-markdown", async (_event, payload) => {
     renamed: targetFilePath !== payload.filePath
   };
 });
+
+ipcMain.handle("file:export-pdf", async (_event, payload) => exportPdf(payload));
+ipcMain.handle("file:export-word", async (_event, payload) => exportWord(payload));
 
 ipcMain.handle("window:set-title", (_event, title) => {
   if (mainWindow) {

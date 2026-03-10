@@ -85,7 +85,8 @@ button { color: inherit; }
   margin-top: 8px;
 }
 .topbar-actions { display: flex; flex-wrap: wrap; gap: 10px; align-content: start; justify-content: flex-end; }
-.topbar-actions button, .toolbar button, .outline button, .tips-header button {
+.menu-stack { position: relative; }
+.topbar-actions button, .toolbar button, .outline button, .tips-header button, .action-menu button {
   border: 1px solid var(--panel-border);
   background: #f6f8fa;
   border-radius: 10px;
@@ -93,9 +94,29 @@ button { color: inherit; }
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease;
 }
-.topbar-actions button:hover, .toolbar button:hover, .outline button:hover, .tips-header button:hover {
+.topbar-actions button:hover, .toolbar button:hover, .outline button:hover, .tips-header button:hover, .action-menu button:hover {
   background: #eef2f6;
   border-color: #afb8c1;
+}
+.action-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  min-width: 164px;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow);
+}
+.action-menu[hidden] { display: none; }
+.action-menu button {
+  width: 100%;
+  text-align: left;
 }
 .toolbar {
   display: flex;
