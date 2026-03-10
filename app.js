@@ -12,6 +12,8 @@ const wordCount = document.getElementById("wordCount");
 const lineCount = document.getElementById("lineCount");
 const imageCount = document.getElementById("imageCount");
 const saveState = document.getElementById("saveState");
+const modeState = document.getElementById("modeState");
+const filePathMeta = document.getElementById("filePathMeta");
 const emptyDocumentTemplate = document.getElementById("emptyDocumentTemplate");
 const editorFrame = document.getElementById("editorFrame");
 const toggleModeButton = document.querySelector('[data-action="toggle-mode"]');
@@ -22,6 +24,7 @@ const tipsPanel = document.getElementById("tipsPanel");
 const tipsToggleButton = document.getElementById("tipsToggleButton");
 const tipsCollapseButton = document.getElementById("tipsCollapseButton");
 const toolbarGroups = document.querySelectorAll("[data-toolbar-group]");
+const tableActionButtons = document.querySelectorAll("[data-table-action]");
 
 let sourceMode = false;
 let saveTimer = null;
@@ -29,6 +32,8 @@ let dragDepth = 0;
 let headingId = 0;
 let currentFilePath = null;
 let currentFileHandle = null;
+let isDocumentDirty = false;
+let lastActiveTableCell = null;
 
 function escapeHtml(value) {
   return value
@@ -368,10 +373,52 @@ function updateStats(markdown) {
   imageCount.textContent = String((markdown.match(/!\[[^\]]*\]\(/g) || []).length);
 }
 
+function sanitizeFileName(name) {
+  const normalized = (name || "").replace(/[\\/:*?"<>|]/g, "-").trim();
+  return normalized || "untitled";
+}
+
+function getFilePathParts(filePath) {
+  const fullPath = filePath || "";
+  const fileName = fullPath.split(/[/\\]/).pop() || "";
+  const extensionMatch = fileName.match(/(\.[^.]+)$/);
+  const extension = extensionMatch?.[1] || ".md";
+  const stem = extensionMatch ? fileName.slice(0, -extension.length) : fileName;
+  return { fileName, extension, stem };
+}
+
+function getRenamedFilePath(title) {
+  if (!currentFilePath) {
+    return null;
+  }
+
+  const { fileName, extension, stem } = getFilePathParts(currentFilePath);
+  const safeTitle = sanitizeFileName(title);
+  if (safeTitle === stem) {
+    return null;
+  }
+
+  return currentFilePath.replace(new RegExp(`${fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), `${safeTitle}${extension}`);
+}
+
+function getFileMetaLabel() {
+  if (currentFilePath) {
+    return currentFilePath;
+  }
+  return desktopAPI || supportsFileSystemAccess ? "未关联文件" : "浏览器下载模式";
+}
+
+function refreshStatusMeta() {
+  modeState.textContent = sourceMode ? "源码模式" : "所见即所得";
+  filePathMeta.textContent = getFileMetaLabel();
+  filePathMeta.title = currentFilePath || "";
+}
+
 function getWindowTitle() {
   const title = documentTitle.value.trim() || "未命名文档";
+  const dirtyPrefix = isDocumentDirty ? "• " : "";
   const suffix = currentFilePath ? ` - ${currentFilePath}` : "";
-  return `FreeMarkDown - ${title}${suffix}`;
+  return `${dirtyPrefix}FreeMarkDown - ${title}${suffix}`;
 }
 
 function refreshWindowTitle() {
@@ -498,6 +545,7 @@ function refreshOutline() {
 function refreshDerivedState() {
   updateStats(getMarkdown());
   refreshOutline();
+  refreshStatusMeta();
   refreshWindowTitle();
 }
 
@@ -519,20 +567,24 @@ function persistDocumentState(label = null) {
   clearTimeout(saveTimer);
   const markdown = getMarkdown();
   persistLocalDraft();
+  isDocumentDirty = false;
   saveState.textContent = label || `已保存 ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   updateStats(markdown);
+  refreshStatusMeta();
   refreshWindowTitle();
 }
 
 function scheduleSave() {
+  isDocumentDirty = true;
   saveState.textContent = currentFilePath ? "未保存修改" : "本地草稿";
   clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => persistDocumentState(currentFilePath ? "已更新草稿" : "本地草稿"), 220);
   refreshDerivedState();
 }
 
-function applyDocument({ title, markdown, filePath = null, stateLabel = "已打开" }) {
+function applyDocument({ title, markdown, filePath = null, fileHandle = null, stateLabel = "已打开" }) {
   currentFilePath = filePath;
+  currentFileHandle = fileHandle;
   documentTitle.value = title || "未命名文档";
   sourceEditor.value = markdown || "";
   setEditorHtml(markdownToHtml(markdown || ""));
@@ -543,6 +595,7 @@ function loadDocument() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
     currentFilePath = null;
+    currentFileHandle = null;
     documentTitle.value = "未命名文档";
     setEditorHtml(emptyDocumentTemplate.innerHTML);
     saveState.textContent = "本地草稿";
@@ -554,6 +607,7 @@ function loadDocument() {
     applyDocument({ title: doc.title, markdown: doc.markdown, filePath: doc.filePath || null, stateLabel: doc.filePath ? "已恢复文件" : "已恢复" });
   } catch {
     currentFilePath = null;
+    currentFileHandle = null;
     documentTitle.value = "未命名文档";
     setEditorHtml(emptyDocumentTemplate.innerHTML);
     saveState.textContent = "恢复失败";
@@ -575,6 +629,124 @@ function toggleMode(forceSource = !sourceMode) {
   }
 
   scheduleSave();
+}
+
+function updateSourceSelection(start, end, replacement, selectionMode = "preserve") {
+  sourceEditor.setRangeText(replacement, start, end, selectionMode);
+  sourceEditor.focus();
+  scheduleSave();
+}
+
+function indentSourceSelection(outdent = false) {
+  const indentUnit = "  ";
+  const { value, selectionStart, selectionEnd } = sourceEditor;
+
+  if (!outdent && selectionStart === selectionEnd) {
+    updateSourceSelection(selectionStart, selectionEnd, indentUnit, "end");
+    return;
+  }
+
+  const blockStart = value.lastIndexOf("\n", Math.max(0, selectionStart - 1)) + 1;
+  const rawBlockEnd = value.indexOf("\n", selectionEnd);
+  const blockEnd = rawBlockEnd === -1 ? value.length : rawBlockEnd;
+  const lines = value.slice(blockStart, blockEnd).split("\n");
+  const updatedLines = lines.map((line) => {
+    if (!outdent) {
+      return `${indentUnit}${line}`;
+    }
+    if (line.startsWith("\t")) {
+      return line.slice(1);
+    }
+    if (line.startsWith(indentUnit)) {
+      return line.slice(indentUnit.length);
+    }
+    if (line.startsWith(" ")) {
+      return line.slice(1);
+    }
+    return line;
+  });
+
+  updateSourceSelection(blockStart, blockEnd, updatedLines.join("\n"));
+}
+
+function isInsideFencedCodeBlock(markdown, position) {
+  const lines = markdown.slice(0, position).split(/\r?\n/);
+  let inCodeBlock = false;
+  lines.forEach((line) => {
+    if (/^\s*```/.test(line)) {
+      inCodeBlock = !inCodeBlock;
+    }
+  });
+  return inCodeBlock;
+}
+
+function getSourceContinuation(lineText, atLineEnd) {
+  const taskMatch = lineText.match(/^(\s*[-*])\s+\[(?: |x|X)\]\s?(.*)$/);
+  if (taskMatch) {
+    if (!taskMatch[2].trim() && atLineEnd) {
+      return { type: "replace-line", text: "" };
+    }
+    return { type: "insert", text: `\n${taskMatch[1]} [ ] ` };
+  }
+
+  const orderedMatch = lineText.match(/^(\s*)(\d+)\.\s+(.*)$/);
+  if (orderedMatch) {
+    if (!orderedMatch[3].trim() && atLineEnd) {
+      return { type: "replace-line", text: "" };
+    }
+    return { type: "insert", text: `\n${orderedMatch[1]}${Number(orderedMatch[2]) + 1}. ` };
+  }
+
+  const unorderedMatch = lineText.match(/^(\s*[-*])\s+(.*)$/);
+  if (unorderedMatch) {
+    if (!unorderedMatch[2].trim() && atLineEnd) {
+      return { type: "replace-line", text: "" };
+    }
+    return { type: "insert", text: `\n${unorderedMatch[1]} ` };
+  }
+
+  const quoteMatch = lineText.match(/^(\s*(?:>\s?)+)(.*)$/);
+  if (quoteMatch) {
+    if (!quoteMatch[2].trim() && atLineEnd) {
+      return { type: "replace-line", text: "" };
+    }
+    const prefix = quoteMatch[1].endsWith(" ") ? quoteMatch[1] : `${quoteMatch[1]} `;
+    return { type: "insert", text: `\n${prefix}` };
+  }
+
+  return null;
+}
+
+function handleSourceEnter(event) {
+  if (event.key !== "Enter" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) {
+    return;
+  }
+
+  const { value, selectionStart, selectionEnd } = sourceEditor;
+  if (selectionStart !== selectionEnd) {
+    return;
+  }
+
+  const lineStart = value.lastIndexOf("\n", Math.max(0, selectionStart - 1)) + 1;
+  const rawLineEnd = value.indexOf("\n", selectionStart);
+  const lineEnd = rawLineEnd === -1 ? value.length : rawLineEnd;
+  if (isInsideFencedCodeBlock(value, lineStart)) {
+    return;
+  }
+
+  const lineText = value.slice(lineStart, lineEnd);
+  const continuation = getSourceContinuation(lineText, selectionStart === lineEnd);
+  if (!continuation) {
+    return;
+  }
+
+  event.preventDefault();
+  if (continuation.type === "replace-line") {
+    updateSourceSelection(lineStart, lineEnd, "", "start");
+    return;
+  }
+
+  updateSourceSelection(selectionStart, selectionEnd, continuation.text, "end");
 }
 
 function promptForLink() {
@@ -628,6 +800,17 @@ function getCurrentBlock() {
   return null;
 }
 
+function findClosestTag(node, tagNames) {
+  let current = node;
+  while (current && current !== editor) {
+    if (current.nodeType === Node.ELEMENT_NODE && tagNames.includes(current.tagName)) {
+      return current;
+    }
+    current = current.parentNode;
+  }
+  return null;
+}
+
 function placeCursorAtEnd(element) {
   const selection = window.getSelection();
   const range = document.createRange();
@@ -635,6 +818,77 @@ function placeCursorAtEnd(element) {
   range.collapse(false);
   selection.removeAllRanges();
   selection.addRange(range);
+}
+
+function insertNodeNearCurrentBlock(node) {
+  const block = getCurrentBlock();
+  if (!block) {
+    editor.appendChild(node);
+    return;
+  }
+
+  const blockText = block.textContent.trim();
+  if (["P", "DIV"].includes(block.tagName) && !blockText) {
+    block.replaceWith(node);
+    return;
+  }
+
+  block.insertAdjacentElement("afterend", node);
+}
+
+function createEditorParagraph() {
+  const paragraph = document.createElement("p");
+  paragraph.appendChild(document.createElement("br"));
+  return paragraph;
+}
+
+function getSelectionContainer() {
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount) {
+    return null;
+  }
+  return selection.anchorNode;
+}
+
+function getCaretMetrics(element) {
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount || !selection.isCollapsed) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer) && element !== range.startContainer) {
+    return null;
+  }
+
+  const prefixRange = range.cloneRange();
+  prefixRange.selectNodeContents(element);
+  prefixRange.setEnd(range.startContainer, range.startOffset);
+  const beforeText = prefixRange.toString().replace(/\u00a0/g, " ");
+  const totalText = (element.textContent || "").replace(/\u00a0/g, " ");
+  return {
+    beforeLength: beforeText.length,
+    totalLength: totalText.length
+  };
+}
+
+function exitListItem(listItem, list) {
+  const listContainer = list;
+  const parent = listContainer.parentNode;
+  listItem.remove();
+  const paragraph = createEditorParagraph();
+  if (parent) {
+    if (listContainer.nextSibling) {
+      parent.insertBefore(paragraph, listContainer.nextSibling);
+    } else {
+      parent.appendChild(paragraph);
+    }
+  }
+  if (!listContainer.children.length) {
+    listContainer.remove();
+  }
+  placeCursorAtEnd(paragraph);
+  scheduleSave();
 }
 
 function insertTaskListItem() {
@@ -650,6 +904,243 @@ function insertTaskListItem() {
   }
   placeCursorAtEnd(li.querySelector("span"));
   scheduleSave();
+}
+
+function insertTable() {
+  const table = document.createElement("table");
+  table.innerHTML = [
+    "<thead><tr><th>列 1</th><th>列 2</th></tr></thead>",
+    "<tbody><tr><td>内容</td><td>内容</td></tr></tbody>"
+  ].join("");
+  insertNodeNearCurrentBlock(table);
+  placeCursorAtEnd(table.querySelector("td"));
+  scheduleSave();
+}
+
+function getActiveTableCell() {
+  const node = getSelectionContainer();
+  const activeCell = node ? findClosestTag(node, ["TD", "TH"]) : null;
+  if (activeCell && editor.contains(activeCell)) {
+    lastActiveTableCell = activeCell;
+    return activeCell;
+  }
+
+  if (lastActiveTableCell && lastActiveTableCell.isConnected && editor.contains(lastActiveTableCell)) {
+    return lastActiveTableCell;
+  }
+
+  return null;
+}
+
+function focusTableCell(cell) {
+  if (!cell) {
+    return;
+  }
+  lastActiveTableCell = cell;
+  placeCursorAtEnd(cell);
+}
+
+function updateTableRowsForColumn(table, cellIndex, action) {
+  Array.from(table.rows).forEach((row) => {
+    const referenceCell = row.children[cellIndex] || row.lastElementChild;
+    if (!referenceCell) {
+      return;
+    }
+
+    if (action === "add") {
+      const nextCell = document.createElement(referenceCell.tagName.toLowerCase());
+      nextCell.textContent = referenceCell.tagName === "TH" ? `列 ${row.children.length + 1}` : "内容";
+      referenceCell.insertAdjacentElement("afterend", nextCell);
+      return;
+    }
+
+    referenceCell.remove();
+  });
+}
+
+function removeTable(table) {
+  const paragraph = createEditorParagraph();
+  table.insertAdjacentElement("afterend", paragraph);
+  table.remove();
+  placeCursorAtEnd(paragraph);
+  scheduleSave();
+}
+
+function handleTableAction(action) {
+  const activeCell = getActiveTableCell();
+  if (!activeCell) {
+    return;
+  }
+
+  const table = activeCell.closest("table");
+  if (!table) {
+    return;
+  }
+
+  const row = activeCell.parentElement;
+  const cellIndex = Array.from(row.children).indexOf(activeCell);
+
+  switch (action) {
+    case "add-row": {
+      const targetSection = row.parentElement.tagName === "THEAD"
+        ? (table.tBodies[0] || table.appendChild(document.createElement("tbody")))
+        : row.parentElement;
+      const newRow = document.createElement("tr");
+      Array.from(row.children).forEach((cell) => {
+        const nextCell = document.createElement(cell.tagName === "TH" ? "td" : cell.tagName.toLowerCase());
+        nextCell.textContent = "内容";
+        newRow.appendChild(nextCell);
+      });
+
+      if (row.parentElement.tagName === "THEAD") {
+        targetSection.insertBefore(newRow, targetSection.firstChild);
+      } else {
+        row.insertAdjacentElement("afterend", newRow);
+      }
+      focusTableCell(newRow.children[Math.max(cellIndex, 0)]);
+      scheduleSave();
+      return;
+    }
+    case "add-column": {
+      updateTableRowsForColumn(table, cellIndex, "add");
+      focusTableCell(row.children[cellIndex + 1] || row.lastElementChild);
+      scheduleSave();
+      return;
+    }
+    case "delete-row": {
+      const totalRows = table.rows.length;
+      if (totalRows <= 1) {
+        removeTable(table);
+        return;
+      }
+
+      const sectionTag = row.parentElement.tagName;
+      if (sectionTag === "THEAD") {
+        const body = table.tBodies[0];
+        const replacement = body?.rows[0];
+        if (!replacement) {
+          removeTable(table);
+          return;
+        }
+
+        const nextHeaderRow = document.createElement("tr");
+        Array.from(replacement.children).forEach((cell, index) => {
+          const th = document.createElement("th");
+          th.textContent = cell.textContent.trim() || `列 ${index + 1}`;
+          nextHeaderRow.appendChild(th);
+        });
+        row.replaceWith(nextHeaderRow);
+        replacement.remove();
+        if (!body.rows.length) {
+          body.remove();
+        }
+        focusTableCell(nextHeaderRow.children[Math.max(cellIndex, 0)]);
+        scheduleSave();
+        return;
+      }
+
+      const fallbackRow = row.nextElementSibling || row.previousElementSibling || table.querySelector("thead tr");
+      row.remove();
+      if (row.parentElement && row.parentElement.tagName === "TBODY" && !row.parentElement.rows.length) {
+        row.parentElement.remove();
+      }
+      focusTableCell(fallbackRow?.children[Math.max(cellIndex, 0)] || fallbackRow?.lastElementChild);
+      scheduleSave();
+      return;
+    }
+    case "delete-column": {
+      const totalColumns = row.children.length;
+      if (totalColumns <= 1) {
+        removeTable(table);
+        return;
+      }
+
+      updateTableRowsForColumn(table, cellIndex, "delete");
+      const nextFocusCell = row.children[Math.min(cellIndex, row.children.length - 1)] || row.lastElementChild;
+      focusTableCell(nextFocusCell);
+      scheduleSave();
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+function handleEditorListContinuation(event) {
+  if (sourceMode || event.key !== "Enter" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) {
+    return;
+  }
+
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount || !selection.isCollapsed) {
+    return;
+  }
+
+  const listItem = findClosestTag(selection.anchorNode, ["LI"]);
+  if (!listItem) {
+    return;
+  }
+
+  const list = listItem.parentElement;
+  if (!list || !["UL", "OL"].includes(list.tagName)) {
+    return;
+  }
+
+  event.preventDefault();
+  const isTaskList = list.classList.contains("task-list");
+  const editableTarget = isTaskList ? listItem.querySelector("span") : listItem;
+  const text = editableTarget?.textContent?.replace(/\u00a0/g, " ").trim() || "";
+  const caret = editableTarget ? getCaretMetrics(editableTarget) : null;
+
+  if (text && caret && caret.beforeLength < caret.totalLength) {
+    return;
+  }
+
+  if (text) {
+    const nextItem = isTaskList ? createTaskListItem() : document.createElement("li");
+    if (!isTaskList) {
+      nextItem.appendChild(document.createElement("br"));
+    }
+    listItem.insertAdjacentElement("afterend", nextItem);
+    placeCursorAtEnd(isTaskList ? nextItem.querySelector("span") : nextItem);
+    scheduleSave();
+    return;
+  }
+
+  exitListItem(listItem, list);
+}
+
+function handleEditorListBackspace(event) {
+  if (sourceMode || event.key !== "Backspace" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) {
+    return;
+  }
+
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount || !selection.isCollapsed) {
+    return;
+  }
+
+  const listItem = findClosestTag(selection.anchorNode, ["LI"]);
+  if (!listItem) {
+    return;
+  }
+
+  const list = listItem.parentElement;
+  if (!list || !["UL", "OL"].includes(list.tagName)) {
+    return;
+  }
+
+  const isTaskList = list.classList.contains("task-list");
+  const editableTarget = isTaskList ? listItem.querySelector("span") : listItem;
+  const text = editableTarget?.textContent?.replace(/\u00a0/g, " ").trim() || "";
+  const caret = editableTarget ? getCaretMetrics(editableTarget) : null;
+
+  if (text || !caret || caret.beforeLength !== 0) {
+    return;
+  }
+
+  event.preventDefault();
+  exitListItem(listItem, list);
 }
 
 function insertBlock(type, level = 1) {
@@ -685,6 +1176,9 @@ function insertBlock(type, level = 1) {
         break;
       case "ol":
         replacement = `1. ${selected}`;
+        break;
+      case "table":
+        replacement = "| 列 1 | 列 2 |\n| --- | --- |\n| 内容 | 内容 |";
         break;
       case "code":
         replacement = `\`\`\`\n${selected}\n\`\`\``;
@@ -725,6 +1219,9 @@ function insertBlock(type, level = 1) {
     case "ol":
       document.execCommand("insertOrderedList");
       break;
+    case "table":
+      insertTable();
+      return;
     case "code":
       document.execCommand("formatBlock", false, "pre");
       break;
@@ -870,6 +1367,7 @@ async function openMarkdownFile() {
       title: result.filePath.split(/[/\\]/).pop().replace(/\.(md|markdown|txt)$/i, ""),
       markdown: result.markdown,
       filePath: result.filePath,
+      fileHandle: null,
       stateLabel: "已打开文件"
     });
     return;
@@ -890,14 +1388,13 @@ async function openMarkdownFile() {
       }
       const file = await handle.getFile();
       const markdown = await file.text();
-      currentFileHandle = handle;
       applyDocument({
         title: file.name.replace(/\.(md|markdown|txt)$/i, "") || "未命名文档",
         markdown,
         filePath: handle.name,
+        fileHandle: handle,
         stateLabel: "已打开文件"
       });
-      currentFileHandle = handle;
       return;
     } catch (error) {
       if (error?.name !== "AbortError") {
@@ -917,29 +1414,48 @@ async function writeToBrowserHandle(handle, markdown) {
 }
 
 async function saveMarkdownFile(forceSaveAs = false) {
+  const rawTitle = documentTitle.value.trim() || "untitled";
   const payload = {
-    title: documentTitle.value.trim() || "untitled",
+    title: rawTitle,
     markdown: getMarkdown(),
     filePath: forceSaveAs ? null : currentFilePath
   };
 
   if (desktopAPI) {
-    const result = forceSaveAs || !currentFilePath
-      ? await desktopAPI.saveMarkdownAs(payload)
-      : await desktopAPI.saveMarkdown(payload);
+    try {
+      const nextFilePath = !forceSaveAs && currentFilePath ? getRenamedFilePath(rawTitle) : null;
+      const result = forceSaveAs || !currentFilePath
+        ? await desktopAPI.saveMarkdownAs(payload)
+        : await desktopAPI.saveMarkdown({ ...payload, nextFilePath });
 
-    if (!result) {
+      if (!result) {
+        return;
+      }
+
+      if (result.error) {
+        saveState.textContent = result.message || "保存失败";
+        isDocumentDirty = true;
+        refreshWindowTitle();
+        return;
+      }
+
+      currentFilePath = result.filePath;
+      currentFileHandle = null;
+      persistDocumentState(result.renamed ? "已重命名并保存" : forceSaveAs ? "已另存为" : "已保存到文件");
+      return;
+    } catch (error) {
+      console.error(error);
+      saveState.textContent = "保存失败";
+      isDocumentDirty = true;
+      refreshWindowTitle();
       return;
     }
-
-    currentFilePath = result.filePath;
-    persistDocumentState(forceSaveAs ? "已另存为" : "已保存到文件");
-    return;
   }
 
   if (supportsFileSystemAccess) {
     try {
-      if (!forceSaveAs && currentFileHandle) {
+      const nextFilePath = !forceSaveAs && currentFilePath ? getRenamedFilePath(rawTitle) : null;
+      if (!forceSaveAs && currentFileHandle && !nextFilePath) {
         await writeToBrowserHandle(currentFileHandle, payload.markdown);
         currentFilePath = currentFileHandle.name;
         persistDocumentState("已保存到文件");
@@ -947,7 +1463,7 @@ async function saveMarkdownFile(forceSaveAs = false) {
       }
 
       const handle = await window.showSaveFilePicker({
-        suggestedName: `${payload.title.replace(/[\\/:*?"<>|]/g, "-")}.md`,
+        suggestedName: `${sanitizeFileName(rawTitle)}.md`,
         types: [{
           description: "Markdown",
           accept: { "text/markdown": [".md"] }
@@ -960,11 +1476,14 @@ async function saveMarkdownFile(forceSaveAs = false) {
       await writeToBrowserHandle(handle, payload.markdown);
       currentFileHandle = handle;
       currentFilePath = handle.name;
-      persistDocumentState(forceSaveAs ? "已另存为" : "已保存到文件");
+      persistDocumentState(forceSaveAs ? "已另存为" : nextFilePath ? "已重命名并保存" : "已保存到文件");
       return;
     } catch (error) {
       if (error?.name !== "AbortError") {
         console.error(error);
+        saveState.textContent = "保存失败";
+        isDocumentDirty = true;
+        refreshWindowTitle();
       }
       return;
     }
@@ -974,7 +1493,7 @@ async function saveMarkdownFile(forceSaveAs = false) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${payload.title.replace(/[\\/:*?"<>|]/g, "-")}.md`;
+  link.download = `${sanitizeFileName(rawTitle)}.md`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -984,6 +1503,7 @@ async function saveMarkdownFile(forceSaveAs = false) {
 
 function resetDocument() {
   currentFilePath = null;
+  currentFileHandle = null;
   documentTitle.value = "未命名文档";
   sourceEditor.value = "";
   setEditorHtml(emptyDocumentTemplate.innerHTML);
@@ -1023,14 +1543,42 @@ document.querySelectorAll("[data-action]").forEach((button) => {
 });
 
 document.querySelectorAll("[data-format]").forEach((button) => {
+  button.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
   button.addEventListener("click", () => {
     insertBlock(button.dataset.format, Number(button.dataset.level || 1));
+  });
+});
+
+tableActionButtons.forEach((button) => {
+  button.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  button.addEventListener("click", () => {
+    handleTableAction(button.dataset.tableAction);
   });
 });
 
 editor.addEventListener("input", () => {
   editor.classList.toggle("is-empty", !editor.textContent.trim());
   scheduleSave();
+});
+
+editor.addEventListener("keydown", (event) => {
+  handleEditorListContinuation(event);
+  handleEditorListBackspace(event);
+});
+
+document.addEventListener("selectionchange", () => {
+  const node = getSelectionContainer();
+  if (!node) {
+    return;
+  }
+  const cell = findClosestTag(node, ["TD", "TH"]);
+  if (cell && editor.contains(cell)) {
+    lastActiveTableCell = cell;
+  }
 });
 
 editor.addEventListener("keyup", (event) => {
@@ -1088,25 +1636,36 @@ toolbarGroups.forEach((group, index) => {
   });
 });
 
-async function onSaveShortcut(event) {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-    event.preventDefault();
-    await saveMarkdownFile(false);
-  }
-}
-
-function onFormatShortcut(event) {
+async function onKeyboardShortcut(event) {
   if (!(event.ctrlKey || event.metaKey)) {
     return;
   }
+
   const key = event.key.toLowerCase();
+  if (event.shiftKey && key === "s") {
+    event.preventDefault();
+    await saveMarkdownFile(true);
+    return;
+  }
+  if (event.shiftKey && key === "m") {
+    event.preventDefault();
+    toggleMode();
+    return;
+  }
+  if (key === "s") {
+    event.preventDefault();
+    await saveMarkdownFile(false);
+    return;
+  }
   if (key === "b") {
     event.preventDefault();
     insertBlock("bold");
+    return;
   }
   if (key === "i") {
     event.preventDefault();
     insertBlock("italic");
+    return;
   }
   if (key === "k") {
     event.preventDefault();
@@ -1115,8 +1674,17 @@ function onFormatShortcut(event) {
 }
 
 window.addEventListener("keydown", (event) => {
-  onFormatShortcut(event);
-  void onSaveShortcut(event);
+  void onKeyboardShortcut(event);
+});
+
+sourceEditor.addEventListener("keydown", (event) => {
+  if (event.key === "Tab") {
+    event.preventDefault();
+    indentSourceSelection(event.shiftKey);
+    return;
+  }
+
+  handleSourceEnter(event);
 });
 
 editorFrame.addEventListener("dragenter", (event) => {
@@ -1182,6 +1750,7 @@ filePicker.addEventListener("change", async (event) => {
     title: file.name.replace(/\.(md|markdown|txt)$/i, "") || "未命名文档",
     markdown,
     filePath: file.name,
+    fileHandle: null,
     stateLabel: supportsFileSystemAccess ? "已导入文件" : "已导入文件（浏览器模式需另存）"
   });
   filePicker.value = "";

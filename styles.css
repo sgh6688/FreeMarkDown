@@ -134,7 +134,7 @@ button { color: inherit; }
 }
 .workspace {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr) 260px;
+  grid-template-columns: 220px minmax(0, 1fr) 260px;
   gap: 16px;
   align-items: start;
 }
@@ -156,8 +156,15 @@ button { color: inherit; }
 }
 .stats { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 14px 0 0; }
 .stats div { padding: 12px; border-radius: 12px; background: #f6f8fa; }
+.stats .stats-wide { min-width: 0; }
 .stats dt { color: var(--muted); font-size: 0.84rem; }
 .stats dd { margin: 4px 0 0; font-size: 1.05rem; font-weight: 700; }
+.stats .meta-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.45;
+  word-break: break-word;
+}
 .outline-panel { padding: 16px; }
 .outline {
   display: flex;

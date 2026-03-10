@@ -6,6 +6,18 @@ const pkg = require("./package.json");
 let mainWindow;
 const appIcon = path.join(__dirname, "assets", "icon.png");
 
+async function pathExists(targetPath) {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -128,8 +140,24 @@ ipcMain.handle("file:save-markdown", async (_event, payload) => {
     return null;
   }
 
-  await fs.writeFile(payload.filePath, payload.markdown, "utf8");
-  return { filePath: payload.filePath };
+  const targetFilePath = payload.nextFilePath || payload.filePath;
+  if (targetFilePath !== payload.filePath && await pathExists(targetFilePath)) {
+    return {
+      error: "TARGET_EXISTS",
+      message: `同目录下已存在文件：${path.basename(targetFilePath)}`,
+      filePath: payload.filePath
+    };
+  }
+
+  await fs.writeFile(targetFilePath, payload.markdown, "utf8");
+  if (targetFilePath !== payload.filePath && await pathExists(payload.filePath)) {
+    await fs.unlink(payload.filePath);
+  }
+
+  return {
+    filePath: targetFilePath,
+    renamed: targetFilePath !== payload.filePath
+  };
 });
 
 ipcMain.handle("window:set-title", (_event, title) => {

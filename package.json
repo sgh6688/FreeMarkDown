@@ -1,6 +1,6 @@
 {
   "name": "freemarkdown",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A focused Markdown editor inspired by the Typora workflow.",
   "main": "main.js",
   "author": "Codex",
@@ -9,11 +9,18 @@
   "scripts": {
     "start": "electron .",
     "check": "node --check app.js && node --check main.js && node --check preload.js",
+    "test:smoke": "node ./scripts/smoke-test.js",
+    "release:win": "electron-builder --win portable",
     "build:portable": "electron-builder --win portable"
+  },
+  "engines": {
+    "node": ">=22.0.0 <23",
+    "npm": ">=10"
   },
   "devDependencies": {
     "electron": "^36.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "playwright": "^1.58.2"
   },
   "build": {
     "appId": "com.codex.freemarkdown",

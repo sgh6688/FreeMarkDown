@@ -72,6 +72,19 @@
             <button type="button" data-format="hr">分割线</button>
           </div>
         </section>
+        <section class="toolbar-group" data-toolbar-group>
+          <button type="button" class="toolbar-group-toggle" data-toolbar-toggle aria-expanded="true">
+            <span class="toolbar-label">表格</span>
+            <span class="toolbar-caret">−</span>
+          </button>
+          <div class="toolbar-group-body">
+            <button type="button" data-format="table">插入表格</button>
+            <button type="button" data-table-action="add-row">加行</button>
+            <button type="button" data-table-action="add-column">加列</button>
+            <button type="button" data-table-action="delete-row">删行</button>
+            <button type="button" data-table-action="delete-column">删列</button>
+          </div>
+        </section>
       </section>
     </div>
 
@@ -95,6 +108,14 @@
             <div>
               <dt>状态</dt>
               <dd id="saveState">未保存</dd>
+            </div>
+            <div>
+              <dt>模式</dt>
+              <dd id="modeState">所见即所得</dd>
+            </div>
+            <div class="stats-wide">
+              <dt>文件</dt>
+              <dd id="filePathMeta" class="meta-value">仅本地草稿</dd>
             </div>
           </dl>
         </section>
@@ -141,6 +162,11 @@
       <p><kbd>- 空格</kbd> 转列表</p>
       <p><kbd>[] 空格</kbd> 转任务列表</p>
       <p><kbd>Ctrl/Cmd + K</kbd> 插入链接</p>
+      <p><kbd>Ctrl/Cmd + Shift + M</kbd> 切换源码模式</p>
+      <p><kbd>Enter</kbd> 在源码模式里续写列表</p>
+      <p><kbd>Backspace</kbd> 可退出空列表项</p>
+      <p><kbd>Tab</kbd> 在源码模式里缩进</p>
+      <p><kbd>工具栏表格</kbd> 可插入并增删行列</p>
       <p><kbd>拖拽 / 粘贴图片</kbd> 自动插入文档</p>
     </div>
   </aside>
