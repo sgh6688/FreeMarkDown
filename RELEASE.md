@@ -4,7 +4,7 @@
 
 ## 目标产物
 
-- `dist/FreeMarkDown-0.1.2-Portable.exe`
+- `dist/FreeMarkDown-0.1.3-Portable.exe`
 
 这是一个便携 exe，已经内置 Electron 运行时。最终用户不需要安装：
 
@@ -72,7 +72,7 @@ Get-ChildItem .\dist
 
 应看到：
 
-- `FreeMarkDown-0.1.2-Portable.exe`
+- `FreeMarkDown-0.1.3-Portable.exe`
 
 ### 6. 人工回归
 
@@ -89,11 +89,11 @@ Get-ChildItem .\dist
 可以直接参考下面这段：
 
 ```text
-FreeMarkDown 0.1.2 已发布。
+FreeMarkDown 0.1.3 已发布。
 
 - Windows x64 绿色便携版
 - 无需安装 Node.js、npm 或 Electron
-- 下载后直接运行 FreeMarkDown-0.1.2-Portable.exe
+- 下载后直接运行 FreeMarkDown-0.1.3-Portable.exe
 ```
 
 ## 故障处理

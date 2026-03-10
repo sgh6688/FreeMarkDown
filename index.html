@@ -10,39 +10,45 @@
   <div class="app-shell">
     <div class="header-stack">
       <header class="topbar">
-        <div class="topbar-main">
-          <div class="brand">
-            <div class="brand-mark">FM</div>
-            <div>
-              <h1>FreeMarkDown</h1>
-              <p>更自由的 Markdown 写作工具</p>
-            </div>
-          </div>
-          <div class="document-head">
-            <input id="documentTitle" class="document-title" value="未命名文档" aria-label="文档标题">
-            <div class="document-subhead">
-              <p class="drop-hint">支持表格、任务列表、图片拖拽与快捷输入</p>
-            </div>
-          </div>
+        <div class="brand">
+          <div class="brand-mark">FM</div>
+          <h1>FreeMarkDown</h1>
         </div>
-        <div class="topbar-actions">
-          <button type="button" data-action="new">新建</button>
-          <button type="button" data-action="import">打开</button>
-          <button type="button" data-action="save">保存</button>
-          <div class="menu-stack">
-            <button type="button" id="exportMenuButton" data-action="export-menu" aria-haspopup="true" aria-expanded="false">导出</button>
-            <div id="exportMenu" class="action-menu" hidden>
-              <button type="button" data-export-kind="markdown">Markdown</button>
-              <button type="button" data-export-kind="pdf">PDF</button>
-              <button type="button" data-export-kind="word">Word (.docx)</button>
-            </div>
-          </div>
-          <button type="button" data-action="toggle-mode">源码模式</button>
-          <button type="button" id="tipsToggleButton">折叠提示</button>
+        <div class="document-head">
+          <input id="documentTitle" class="document-title" value="未命名文档" aria-label="文档标题">
         </div>
       </header>
 
       <section class="toolbar panel" id="toolbar">
+        <section class="toolbar-group toolbar-group-file" data-toolbar-group>
+          <button type="button" class="toolbar-group-toggle" data-toolbar-toggle aria-expanded="true">
+            <span class="toolbar-label">文件</span>
+            <span class="toolbar-caret">−</span>
+          </button>
+          <div class="toolbar-group-body">
+            <button type="button" data-action="new">新建</button>
+            <button type="button" data-action="import">打开</button>
+            <button type="button" data-action="save">保存</button>
+            <div class="menu-stack">
+              <button type="button" id="exportMenuButton" data-action="export-menu" aria-haspopup="true" aria-expanded="false">导出</button>
+              <div id="exportMenu" class="action-menu" hidden>
+                <button type="button" data-export-kind="markdown">另存为 Markdown</button>
+                <button type="button" data-export-kind="pdf">导出 PDF</button>
+                <button type="button" data-export-kind="word">导出 Word (.docx)</button>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section class="toolbar-group toolbar-group-view" data-toolbar-group>
+          <button type="button" class="toolbar-group-toggle" data-toolbar-toggle aria-expanded="true">
+            <span class="toolbar-label">视图</span>
+            <span class="toolbar-caret">−</span>
+          </button>
+          <div class="toolbar-group-body">
+            <button type="button" data-action="toggle-mode">源码模式</button>
+            <button type="button" id="tipsToggleButton">折叠提示</button>
+          </div>
+        </section>
         <section class="toolbar-group" data-toolbar-group>
           <button type="button" class="toolbar-group-toggle" data-toolbar-toggle aria-expanded="true">
             <span class="toolbar-label">标题</span>
@@ -97,12 +103,16 @@
 
     <main class="workspace">
       <section class="left-rail">
+        <button type="button" id="leftRailDockButton" class="rail-dock-button" aria-label="展开文档概览" title="展开文档概览">&gt;</button>
         <section class="panel">
-          <h2>文档概览</h2>
+          <div class="panel-heading panel-heading-compact">
+            <h2>文档概览</h2>
+            <button type="button" id="leftRailToggleButton" class="panel-toggle" aria-expanded="true">折叠</button>
+          </div>
           <dl class="stats">
             <div>
               <dt>字数</dt>
-              <dd id="wordCount">0</dd>
+                <dd id="wordCount">0</dd>
             </div>
             <div>
               <dt>行数</dt>

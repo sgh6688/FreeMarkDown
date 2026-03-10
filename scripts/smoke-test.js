@@ -144,9 +144,38 @@ async function main() {
     assert.equal(renamedFileContent, "# Rename Fixture");
     await assert.rejects(fs.access(originalFilePath));
 
+    const editorWidthBeforeCollapse = await window.locator("#editorFrame").evaluate((node) => node.getBoundingClientRect().width);
+    await window.locator("#leftRailToggleButton").evaluate((node) => node.click());
+    await window.waitForFunction(() => document.querySelector(".app-shell")?.classList.contains("is-left-rail-collapsed"));
+    await window.waitForTimeout(260);
+    const editorWidthAfterCollapse = await window.locator("#editorFrame").evaluate((node) => node.getBoundingClientRect().width);
+    assert.ok(editorWidthAfterCollapse > editorWidthBeforeCollapse + 40);
+    const dockButtonMetrics = await window.locator("#leftRailDockButton").evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      return { width: rect.width, height: rect.height, text: node.textContent.trim() };
+    });
+    assert.ok(dockButtonMetrics.width <= 40);
+    assert.equal(dockButtonMetrics.text, ">");
+    await window.locator("#leftRailDockButton").evaluate((node) => node.click());
+    await window.waitForFunction(() => !document.querySelector(".app-shell")?.classList.contains("is-left-rail-collapsed"));
+    await waitForText(window, "#leftRailToggleButton", "折叠");
+
     await window.locator("#exportMenuButton").click();
     await window.waitForFunction(() => !document.getElementById("exportMenu")?.hidden);
-    await window.waitForFunction(() => document.querySelectorAll("[data-export-kind]").length === 3);
+    const exportMenuInfo = await window.evaluate(() => {
+      const menu = document.getElementById("exportMenu");
+      const labels = Array.from(menu.querySelectorAll("button")).map((button) => button.textContent.trim());
+      const rect = menu.getBoundingClientRect();
+      return {
+        labels,
+        rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+        viewportHeight: window.innerHeight,
+        hitTag: document.elementFromPoint(rect.left + 12, rect.bottom - 12)?.closest("#exportMenu")?.id || ""
+      };
+    });
+    assert.deepEqual(exportMenuInfo.labels, ["另存为 Markdown", "导出 PDF", "导出 Word (.docx)"]);
+    assert.ok(exportMenuInfo.rect.bottom <= exportMenuInfo.viewportHeight - 4);
+    assert.equal(exportMenuInfo.hitTag, "exportMenu");
     await window.keyboard.press("Escape");
     await window.waitForFunction(() => document.getElementById("exportMenu")?.hidden === true);
 

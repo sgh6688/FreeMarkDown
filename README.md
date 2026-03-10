@@ -8,12 +8,12 @@ FreeMarkDown 是一个面向 Windows 的 Markdown 编辑器，基于 Electron，
 
 当前便携版产物：
 
-- `dist/FreeMarkDown-0.1.2-Portable.exe`
+- `dist/FreeMarkDown-0.1.3-Portable.exe`
 
 使用方式：
 
 1. 进入仓库的 `dist` 目录。
-2. 双击 `FreeMarkDown-0.1.2-Portable.exe`。
+2. 双击 `FreeMarkDown-0.1.3-Portable.exe`。
 3. 应用会直接运行，不需要安装额外运行时或开发依赖。
 
 说明：
@@ -116,7 +116,7 @@ npm run release:win
 
 构建成功后，产物会出现在：
 
-- `dist/FreeMarkDown-0.1.2-Portable.exe`
+- `dist/FreeMarkDown-0.1.3-Portable.exe`
 
 这个 exe 已经包含应用运行所需内容，目标机器不需要再安装 Node.js、npm 或 Electron。
 
@@ -126,7 +126,7 @@ npm run release:win
 2. `npm run check`
 3. `npm run test:smoke`
 4. `npm run build:portable`
-5. 检查 `dist/FreeMarkDown-0.1.2-Portable.exe` 是否生成
+5. 检查 `dist/FreeMarkDown-0.1.3-Portable.exe` 是否生成
 6. 双击 exe 做一次人工验证
 
 ## 常见问题

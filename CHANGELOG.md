@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3
+
+- Consolidated file actions and formatting tools into a single editor-style toolbar
+- Reduced header height and removed the extra support slogan for a denser writing layout
+- Kept a slim expand handle when the document overview rail is collapsed
+- Fixed the export popup stacking order so it stays above the formatting toolbar
+- Refreshed the Windows portable release artifacts and release documentation
+
 ## 0.1.2
 
 - Added Windows portable release workflow and distribution docs

@@ -1,9 +1,11 @@
 const STORAGE_KEY = "inkdown-document";
 const TIPS_STORAGE_KEY = "freemarkdown-tips-state";
 const TOOLBAR_STORAGE_KEY = "freemarkdown-toolbar-state";
+const LAYOUT_STORAGE_KEY = "freemarkdown-layout-state";
 const desktopAPI = window.electronAPI || null;
 const supportsFileSystemAccess = typeof window.showOpenFilePicker === "function" && typeof window.showSaveFilePicker === "function";
 
+const appShell = document.querySelector(".app-shell");
 const editor = document.getElementById("editor");
 const sourceEditor = document.getElementById("sourceEditor");
 const filePicker = document.getElementById("filePicker");
@@ -23,11 +25,17 @@ const dropOverlay = document.getElementById("dropOverlay");
 const tipsPanel = document.getElementById("tipsPanel");
 const tipsToggleButton = document.getElementById("tipsToggleButton");
 const tipsCollapseButton = document.getElementById("tipsCollapseButton");
+const leftRailToggleButton = document.getElementById("leftRailToggleButton");
+const leftRailDockButton = document.getElementById("leftRailDockButton");
 const exportMenuButton = document.getElementById("exportMenuButton");
 const exportMenu = document.getElementById("exportMenu");
 const exportMenuItems = document.querySelectorAll("[data-export-kind]");
 const toolbarGroups = document.querySelectorAll("[data-toolbar-group]");
 const tableActionButtons = document.querySelectorAll("[data-table-action]");
+
+if (exportMenu.parentElement !== document.body) {
+  document.body.append(exportMenu);
+}
 
 let sourceMode = false;
 let saveTimer = null;
@@ -493,10 +501,35 @@ function setExportMenuOpen(open) {
   exportMenuOpen = open;
   exportMenu.hidden = !open;
   exportMenuButton.setAttribute("aria-expanded", String(open));
+  if (open) {
+    updateExportMenuPosition();
+  }
 }
 
 function toggleExportMenu(forceOpen = !exportMenuOpen) {
   setExportMenuOpen(forceOpen);
+}
+
+function updateExportMenuPosition() {
+  if (!exportMenuOpen) {
+    return;
+  }
+
+  const buttonRect = exportMenuButton.getBoundingClientRect();
+  const menuWidth = exportMenu.offsetWidth;
+  const menuHeight = exportMenu.offsetHeight;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const top = buttonRect.bottom + menuHeight + 12 <= viewportHeight
+    ? buttonRect.bottom + 8
+    : Math.max(12, buttonRect.top - menuHeight - 8);
+  const left = Math.min(
+    Math.max(12, buttonRect.right - menuWidth),
+    Math.max(12, viewportWidth - menuWidth - 12)
+  );
+
+  exportMenu.style.top = `${Math.round(top)}px`;
+  exportMenu.style.left = `${Math.round(left)}px`;
 }
 
 function readTipsState() {
@@ -523,6 +556,33 @@ function setTipsState(partial) {
   const nextState = { ...readTipsState(), ...partial };
   persistTipsState(nextState);
   applyTipsState();
+}
+
+function readLayoutState() {
+  try {
+    return JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function persistLayoutState(state) {
+  localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(state));
+}
+
+function applyLayoutState() {
+  const state = readLayoutState();
+  const leftRailCollapsed = Boolean(state.leftRailCollapsed) && window.innerWidth > 1180;
+  appShell.classList.toggle("is-left-rail-collapsed", leftRailCollapsed);
+  leftRailToggleButton.setAttribute("aria-expanded", String(!leftRailCollapsed));
+  leftRailToggleButton.textContent = leftRailCollapsed ? "展开" : "折叠";
+  leftRailDockButton.setAttribute("aria-hidden", String(!leftRailCollapsed));
+}
+
+function setLayoutState(partial) {
+  const nextState = { ...readLayoutState(), ...partial };
+  persistLayoutState(nextState);
+  applyLayoutState();
 }
 
 function readToolbarState() {
@@ -1677,6 +1737,15 @@ exportMenuItems.forEach((button) => {
   });
 });
 
+leftRailToggleButton.addEventListener("click", () => {
+  const state = readLayoutState();
+  setLayoutState({ leftRailCollapsed: !Boolean(state.leftRailCollapsed) });
+});
+
+leftRailDockButton.addEventListener("click", () => {
+  setLayoutState({ leftRailCollapsed: false });
+});
+
 document.querySelectorAll("[data-format]").forEach((button) => {
   button.addEventListener("mousedown", (event) => {
     event.preventDefault();
@@ -1827,6 +1896,10 @@ document.addEventListener("click", (event) => {
   setExportMenuOpen(false);
 });
 
+window.addEventListener("resize", applyLayoutState, { passive: true });
+window.addEventListener("resize", updateExportMenuPosition, { passive: true });
+window.addEventListener("scroll", updateExportMenuPosition, { passive: true });
+
 sourceEditor.addEventListener("keydown", (event) => {
   if (event.key === "Tab") {
     event.preventDefault();
@@ -1930,6 +2003,7 @@ window.addEventListener("beforeunload", () => {
 
 loadDocument();
 applyTipsState();
+applyLayoutState();
 refreshWindowTitle();
 
 
